@@ -97,7 +97,7 @@ local do_update_market_gui -- token
 ---Global storage
 ---Markets are indexed by the position "x,y" and contains the group it belongs to
 ---Items are indexed by the group name and is a list indexed by the item name and contains the prices per item
----players_in_market_view is a list of {position, group_name} data
+---players_in_market_view is a list of {position, group_name, market} data, indexed by player index
 local memory = {
     id = 0,
     markets = {},
@@ -357,30 +357,12 @@ local function do_coin_label(coin_count, label)
 end
 
 local function draw_market_frame(player, group_name)
-    local frame = player.gui.center.add({
-        type = 'frame',
+    local frame, close_button = Gui.add_window(player, {
         name = market_frame_name,
-        direction = 'vertical',
-        style = 'non_draggable_frame'
+        caption = Retailer.get_market_group_label(group_name),
+        close_button_name = market_frame_close_button_name
     })
-
-    do -- Header
-        local header = frame.add { type = 'flow', direction = 'horizontal' }
-        Gui.set_style(header, { horizontal_spacing = 8, vertical_align = 'center', bottom_padding = 4 })
-
-        header.add { type = 'label', caption = Retailer.get_market_group_label(group_name), style = 'frame_title' }
-        Gui.add_pusher(header)
-
-        local button = header.add {
-            type = 'sprite-button',
-            name = market_frame_close_button_name,
-            sprite = 'utility/close',
-            clicked_sprite = 'utility/close_black',
-            style = 'close_button',
-            tooltip = {'gui.close-instruction'}
-        }
-        Gui.set_data(button, frame)
-    end
+    Gui.set_data(close_button, frame)
 
     local inner = frame.add { type = 'frame', style = 'entity_frame', direction = 'vertical' }
     Gui.set_style(inner, { padding = 0 })
@@ -460,7 +442,7 @@ local function set_market_group_name(position, group_name)
 end
 
 local function close_market_gui(player)
-    local element = player.gui.center
+    local element = player.gui.screen
     memory.players_in_market_view[player.index] = nil
 
     if element and element.valid then
@@ -472,18 +454,16 @@ local function close_market_gui(player)
     player.opened = nil
 end
 
+-- Closes the market if the player's character can no longer reach it, by Factorio's own rule,
+-- which measures to the market's edge: measuring to its centre closed markets the game had just
+-- let them open. It asks the character, not the player: in remote view a player can open entities
+-- anywhere they can see, but buying needs the character there.
 local function check_player_in_range(player, market)
     if not(player and player.valid and player.character and player.character.valid) then
         return
     end
 
-    local player_position = player.physical_position
-    local market_position = market.position
-    local delta_x = player_position.x - market_position.x
-    local delta_y = player_position.y - market_position.y
-
-    local reach_distance = player.character.reach_distance * 1.05
-    if delta_x * delta_x + delta_y * delta_y > reach_distance * reach_distance then
+    if not (market and market.valid and player.character.can_reach_entity(market)) then
         close_market_gui(player)
         return false
     end
@@ -519,6 +499,7 @@ Event.add(defines.events.on_gui_opened, function (event)
     memory.players_in_market_view[player.index] = {
         position = position,
         group_name = group_name,
+        market = entity,
     }
     local frame = draw_market_frame(player, group_name)
 
@@ -743,7 +724,7 @@ do_update_market_gui = Token.register(function(params)
         if group_name == view_data.group_name then
             local player = game.get_player(player_index)
             if player and player.valid then
-                local frame = player.gui.center[market_frame_name]
+                local frame = player.gui.screen[market_frame_name]
                 if not frame or not frame.valid then
                     -- player already closed the market GUI and somehow this was not reported
                     memory.players_in_market_view[player_index] = nil
@@ -765,7 +746,7 @@ Event.on_nth_tick(37, function()
     for player_index, view_data in pairs(memory.players_in_market_view) do
         local player = game.get_player(player_index)
         if player and player.valid then
-            if not check_player_in_range(player, view_data) then
+            if not check_player_in_range(player, view_data.market) then
                 return
             end
         else

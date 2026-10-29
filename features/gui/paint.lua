@@ -86,7 +86,7 @@ local function player_build_tile(event)
         return
     end
 
-    if not Gui.get_left_element(player, main_frame_name) then
+    if not Gui.get_panel(player, main_frame_name) then
         refund_tiles(player, event.tiles)
         return
     end
@@ -205,19 +205,16 @@ local function player_removed(event)
 end
 
 local function draw_filters_table(event)
-    local center = event.player.gui.center
-
-    if center[filters_table_name] then
+    if event.player.gui.screen[filters_table_name] then
         return
     end
 
-    local frame = center.add {
-        type = 'frame',
+    local frame, title_close_button = Gui.add_window(event.player, {
         name = filters_table_name,
-        direction = 'vertical',
         caption = { 'paint.palette' },
-        style = 'non_draggable_frame',
-    }
+        close_button_name = filter_table_close_button_name,
+    })
+    Gui.set_data(title_close_button, frame)
 
     local inner = frame.add { type = 'frame', style = 'inside_deep_frame' }.add { type = 'frame', style = 'filter_frame' }.add { type = 'scroll-pane', style = 'deep_slots_scroll_pane' }
 
@@ -248,47 +245,51 @@ local function draw_filters_table(event)
     Gui.set_data(frame, event.element)
 end
 
+-- Shows the player's brush tile on the brush button, or an empty slot, and lets the clear button
+-- clear it only while there is one.
+local function show_brush(brush, tile_name)
+    brush.sprite = tile_name and 'tile/' .. tile_name or nil
+    brush.tooltip = tile_name and { 'paint.brush_tooltip', get_tile_localised_name(tile_name) } or { 'paint.select_brush' }
+
+    local clear_button = Gui.get_data(brush)
+    if clear_button and clear_button.valid then
+        clear_button.enabled = tile_name ~= nil
+    end
+end
+
 local function toggle(event)
     local player = event.player
-    local main_frame = Gui.get_left_element(player, main_frame_name)
+    local main_frame = Gui.get_panel(player, main_frame_name)
 
     if main_frame and main_frame.valid then
         Gui.destroy(main_frame)
         local main_button = Gui.get_top_element(player, main_button_name)
         main_button.toggled = false
     else
-        main_frame = Gui.add_left_element(player, {
-            type = 'frame',
-            name = main_frame_name,
-            direction = 'vertical',
-            caption = { 'paint.frame_name' },
-        })
-        Gui.set_style(main_frame, { width = 370 })
-
-        local inner_frame = main_frame.add { type = 'frame', style = 'inside_shallow_frame', name = 'inner' }
-        Gui.set_style(inner_frame, { padding = 8 })
+        local _, inner_frame = Gui.add_panel(player, { name = main_frame_name, caption = { 'paint.frame_name' }, toggle_name = main_button_name, width = 'narrow' })
 
         local top_flow = inner_frame.add { type = 'flow', direction = 'horizontal' }
-
-        local tile_name = paint_brushes_by_player[event.player_index]
+        Gui.set_style(top_flow, { vertical_align = 'center' })
 
         local brush = top_flow.add({ type = 'flow' }).add {
             type = 'sprite-button',
             style = 'slot_button_in_shallow_frame',
             name = filter_button_name,
-            tooltip = get_tile_localised_name(tile_name) or { 'paint.select_brush' },
-            sprite = tile_name and 'tile/' .. tile_name,
         }
+
+        local clear_brush = top_flow.add {
+            type = 'sprite-button',
+            name = filter_clear_name,
+            sprite = 'utility/trash',
+            style = 'tool_button',
+            tooltip = { 'paint.clear_brush' },
+        }
+        Gui.set_data(clear_brush, brush)
+        Gui.set_data(brush, clear_brush)
+        show_brush(brush, paint_brushes_by_player[event.player_index])
 
         local label = top_flow.add { type = 'label', caption = { 'paint.instructions' } }
         Gui.set_style(label, { font = 'default-bold', single_line = false, left_padding = 10 })
-
-        local buttons_flow = main_frame.add { type = 'flow', direction = 'horizontal' }
-
-        Gui.make_close_button(buttons_flow, main_button_name)
-
-        local clear_brush = buttons_flow.add { type = 'button', name = filter_clear_name, caption = { 'paint.clear_brush' } }
-        Gui.set_data(clear_brush, brush)
     end
 end
 
@@ -297,9 +298,7 @@ Gui.on_click(main_button_name, toggle)
 Gui.on_click(filter_button_name, function(event)
     if event.button == defines.mouse_button_type.right then
         paint_brushes_by_player[event.player_index] = nil
-        local element = event.element
-        element.sprite = 'utility/pump_cannot_connect_icon'
-        element.tooltip = { 'paint.select_brush' }
+        show_brush(event.element, nil)
     else
         draw_filters_table(event)
     end
@@ -308,10 +307,8 @@ end)
 Gui.on_click(filter_clear_name, function(event)
     local brush = Gui.get_data(event.element)
 
-    brush.sprite = 'utility/pump_cannot_connect_icon'
-    brush.tooltip = { 'paint.select_brush' }
-
     paint_brushes_by_player[event.player_index] = nil
+    show_brush(brush, nil)
 end)
 
 Gui.on_click(filter_element_name, function(event)
@@ -326,8 +323,7 @@ Gui.on_click(filter_element_name, function(event)
     local filter_button = Gui.get_data(frame)
 
     paint_brushes_by_player[event.player_index] = tile_name
-    filter_button.sprite = element.sprite
-    filter_button.tooltip = element.tooltip
+    show_brush(filter_button, tile_name)
 
     Gui.destroy(frame)
 end)

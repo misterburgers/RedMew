@@ -36,6 +36,21 @@ Public.default_pusher = {
     }
 }
 
+-- on top of vanilla's frame_header_flow, which spaces the title bar like Factorio's own windows
+Public.default_title_bar = {
+    style = {
+        vertical_align = 'center',
+    }
+}
+
+-- the two widths of side panels (see Gui.add_panel)
+Public.panel_width = {
+    narrow = 400,
+    wide = 470,
+    -- the minimap's, for a panel players float under it (the production HUD)
+    minimap = 256,
+}
+
 Public.default_dragger = {
     style = {
         vertically_stretchable = true,
